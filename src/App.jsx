@@ -1,0 +1,1469 @@
+import React, { useState } from "react";
+import {
+  BarChart, Bar, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip,
+  LineChart, Line, Cell, ReferenceLine, Legend
+} from "recharts";
+
+// ============ BRAND ============
+const BRAND = {
+  green: "#1FD43E",        // bright ScoutsPlaybook green
+  greenDark: "#0C5C24",    // dark green frame
+  greenGlow: "rgba(31, 212, 62, 0.4)",
+  grass: "#1A4D2E",
+  grassDark: "#0F3520",
+  grassLight: "#2D6A45"
+};
+
+// ============ CATEGORIES ============
+const kpiCategories = {
+  buildup:     { label: "Build-up", sub: "Offensive Coverage", color: "#00D4FF", description: "Possession sequences from recovery in own half through to the attacking third" },
+  transitions: { label: "Transitions & Restarts", sub: "Possession Origin", color: "#FFD700", description: "How possession starts and what determines its success after origin" },
+  groups:      { label: "Group Dynamics", sub: "Player Combinations", color: "#FF6B9D", description: "How many players touch the ball — and why the answer matters" },
+  finalthird:  { label: "Final Third", sub: "FOA Execution", color: "#FF6B35", description: "What happens once the ball enters the final offensive area" },
+  finishing:   { label: "Finishing & Conversion", sub: "Shot Quality", color: "#FF3D5A", description: "The decisive metrics — converting opportunities to goals" },
+  macro:       { label: "Match Differentiators", sub: "Top-line Markers", color: BRAND.green, description: "Aggregate match-level signatures of winning performances" }
+};
+
+const kpis = [
+  { id: "B-01", cat: "buildup", name: "Long Passing Sequence Rate", definition: "% of offensive coverages using ≥5 passes", formula: "(≥5 pass OCs ÷ total OCs) × 100", benchmark: "Winners 20.0% | Losers 16.8%", target: "≥20% of OCs reach 5+ passes", success: "29.2%", why: "≥5-pass OCs had the highest success rate (29.2%) and winners produced 22% more of them than losers (527 vs 430). Indicates control of organisation and tempo.", training: "SSG constraint: bonus point for sequences reaching 5+ passes before entering the attacking third.", evidence: "Table 2, Appendix B", priority: "High" },
+  { id: "B-02", cat: "buildup", name: "Medium-Pass Conversion Rate", definition: "Success rate of 3-4 pass offensive coverages", formula: "(Successful 3-4 pass OCs ÷ total 3-4 pass OCs) × 100", benchmark: "Winners 27.0% | Losers 19.6% — 7.4pp gap", target: "Aim for 25%+ conversion in this bracket", success: "27.0%", why: "The medium-pass bracket is the LARGEST winner-loser gap in build-up (bigger than long-pass or short-pass gaps). Tests whether your 3rd-pass decision-making is functional.", training: "3-touch positional games where the third pass must penetrate a line.", evidence: "Appendix B", priority: "High" },
+  { id: "B-03", cat: "buildup", name: "Pre-Offensive Origin Rate", definition: "% of OCs whose first action begins in the pre-offensive area", formula: "(OCs originating in pre-offensive zone ÷ total OCs) × 100", benchmark: "Pre-offensive originated OCs: 34.8% success rate", target: "Increase share of OCs starting in this zone", success: "34.8%", why: "Pre-offensive zone origin produced the highest first-action success rate. Lago-Ballesteros found these are 19× more effective than defensive area starts.", training: "Pressing trigger drills aimed at winning ball in middle third.", evidence: "Figure 7", priority: "High" },
+  { id: "B-04", cat: "buildup", name: "Pre-Offensive Conclusion Rate", definition: "% of OCs whose final action concludes in the pre-offensive area", formula: "(OCs ending in pre-offensive zone ÷ total OCs) × 100", benchmark: "1318 OCs end in pre-offensive area — 33.6% success", target: "Maximise OCs flowing through this zone", success: "33.6%", why: "More moves end in this zone than anywhere else, and moves ending here succeed more often than anywhere else. It is the engine room of attacking football — the bridge between build-up and the final third.", training: "SSGs with marked pre-offensive zone where successful entry is rewarded.", evidence: "Figure 8", priority: "High" },
+  { id: "B-05", cat: "buildup", name: "Defensive Area Origin Rate (inverse)", definition: "% of OCs originating in the defensive area (lower is better)", formula: "(OCs originating in defensive zone ÷ total OCs) × 100", benchmark: "Defensive-origin OCs: 17.5% success, 82.5% fail", target: "Minimise — high values indicate forced recovery in own half", success: "17.5%", why: "Recoveries in your own defensive area very rarely lead to anything. 96 out of every 100 moves that end in the defensive area fail completely.", training: "Counter-press intensity drills to win ball back before it reaches own defensive third.", evidence: "Figure 7, 8", priority: "Medium" },
+  { id: "T-01", cat: "transitions", name: "Post-Recovery Conversion Rate", definition: "% of OCs initiated by a recovery that produce a successful outcome", formula: "(Successful recovery-OCs ÷ total recovery-OCs) × 100", benchmark: "Winners 24.2% | Losers 20.5% — 3.7pp gap", target: "≥24% conversion rate", success: "24.2%", why: "Paired t-test confirms winners and losers RECOVER BALL EQUALLY (P=0.119). Differentiator is purely what happens in the actions AFTER recovery.", training: "5-second window drills: pre-coded first 2 actions after recovery to optimise decision speed.", evidence: "Table 3, Appendix C", priority: "High" },
+  { id: "T-02", cat: "transitions", name: "FOA Continuation Rate", definition: "% of OCs that progress into a final offensive area sequence", formula: "(OCs producing FOA entry ÷ total OCs) × 100", benchmark: "FOA-originated OCs are 45.3% of all OCs", target: "Maximise OC-to-FOA throughput", success: "26.3%", why: "FOA-originated OCs have the highest type-of-possession success rate (26.3%). The OC → FOA chain is the principal scoring pathway.", training: "End-to-end SSGs scored by FOA entries.", evidence: "Table 3, Appendix C", priority: "High" },
+  { id: "T-03", cat: "transitions", name: "Restart Conversion Rate", definition: "% of restart-initiated possessions reaching successful outcome", formula: "(Successful restart-OCs ÷ total restart-OCs) × 100", benchmark: "OC: Winners 22.5% vs Losers 15.8% | FOA: Winners 20.8% vs Losers 7.1% (13.7pp gap)", target: "Match winner benchmark (≥22% OC, ≥20% FOA)", success: "22.5%", why: "Restart-to-FOA conversion shows a 13.7pp winner-loser gap — one of the largest. Set piece execution is dramatically underdeveloped in losing teams.", training: "Dedicated restart routines with conditional rules; opposition-realistic set-piece drilling.", evidence: "Appendix C, H", priority: "Critical" },
+  { id: "G-01", cat: "groups", name: "Solo Build-up Success", definition: "Success rate of 1-player offensive coverage sequences", formula: "(Successful 1P OCs ÷ total 1P OCs) × 100", benchmark: "31.3% success rate — second-highest among low-count sequences", target: "Recognise the value of individual progression", success: "31.3%", why: "Solo carries succeed more than 2-player combinations (31.3% vs 18.8%). Individual ball-carrying ability is underrated.", training: "1v1 progression drills; rewards for retaining individual control through pressure.", evidence: "Appendix E", priority: "Medium" },
+  { id: "G-02", cat: "groups", name: "Dual-Player Sequence Efficiency", definition: "Success rate of 2-player offensive coverage sequences", formula: "(Successful 2P OCs ÷ total 2P OCs) × 100", benchmark: "2P sequences = 38% of all OCs but ONLY 18.8% success — worst rate in the dataset", target: "Improve toward 25% (3-player benchmark)", success: "18.8%", why: "The most frequent AND most inefficient grouping. Highest-leverage improvement target in the entire build-up phase.", training: "Wall-pass / give-and-go drills; rondos focusing on the 2nd touch decision.", evidence: "Appendix E", priority: "Critical" },
+  { id: "G-03", cat: "groups", name: "Large-Group Mobilisation Rate", definition: "% of OCs involving 7+ players", formula: "(OCs with ≥7 player involvement ÷ total OCs) × 100", benchmark: "7P: 33.5% | 8P: 39.3% | 9P: 44.0% success", target: "Develop capacity for high-involvement sequences", success: "33.5%+", why: "Sequences involving many players consistently outperform mid-size groupings.", training: "Full 11v11 possession drills requiring distribution through ≥5 distinct players.", evidence: "Appendix E", priority: "Medium" },
+  { id: "G-04", cat: "groups", name: "Solo FOA Execution", definition: "Success rate of 1-player final offensive area sequences", formula: "(Successful 1P FOA sequences ÷ total 1P FOA sequences) × 100", benchmark: "1P FOA sequences: 54.2% of all FOAs, 21.8% success (highest)", target: "≥21% conversion when isolated in the final third", success: "21.8%", why: "In the final third, fewer players = higher success. 1-player sequences outperform every multi-player configuration.", training: "1v1 finishing against GK; isolated final-third decision-making drills.", evidence: "Figure 14, Appendix I", priority: "High" },
+  { id: "F-01", cat: "finalthird", name: "Direct Strike Rate (0-pass FOA)", definition: "% of final offensive area sequences involving zero passes", formula: "(0-pass FOA sequences ÷ total FOA sequences) × 100", benchmark: "0-pass FOAs: 55.4% of all FOAs, 22.1% success (highest)", target: "Maintain ≥55% 0-pass share with 22%+ conversion", success: "22.1%", why: "No-pass sequences are most frequent AND most successful FOA configuration. Pass count significantly inversely correlated with FOA success (P=0.003).", training: "First-touch finishing exercises; penalise extra touches.", evidence: "Table 7, Appendix F", priority: "High" },
+  { id: "F-02", cat: "finalthird", name: "1-Pass FOA Conversion", definition: "Success rate of 1-pass FOA sequences", formula: "(Successful 1-pass FOA ÷ total 1-pass FOA) × 100", benchmark: "Winners 20.8% | Losers 9.7% — 11.1pp gap", target: "≥20% conversion", success: "20.8%", why: "Even simple two-touch combinations sharply discriminate winners from losers. Quality of the assist-to-finish moment is a primary separator.", training: "Cut-back drills; one-touch finishes from set service patterns.", evidence: "Appendix F", priority: "Critical" },
+  { id: "F-03", cat: "finalthird", name: "Short-Duration FOA Rate", definition: "% of FOA sequences completed within 0–3 seconds", formula: "(FOA sequences ≤3s ÷ total FOA sequences) × 100", benchmark: "0-3s FOAs: 57.8% of total, 21.2% success", target: "≥58% of FOA sequences ≤3 seconds", success: "21.2%", why: "Duration significantly affects FOA outcomes (P=0.012). Longer sequences allow defensive reorganisation.", training: "3-second rule in SSG final-third zones.", evidence: "Table 8, Appendix G", priority: "High" },
+  { id: "F-04", cat: "finalthird", name: "Long-Duration FOA Survival", definition: "Success rate of FOA sequences lasting ≥6 seconds", formula: "(Successful ≥6s FOAs ÷ total ≥6s FOAs) × 100", benchmark: "Winners 16.0% | Losers 4.8% — 11.2pp gap", target: "≥15% conversion when forced to hold ball >6s in box", success: "16.0%", why: "When losers hold the ball in the box ≥6s, they almost never produce anything (4.8%). Winners triple that.", training: "Patience-under-pressure drills; protect-the-ball in the box.", evidence: "Appendix G", priority: "Medium" },
+  { id: "F-05", cat: "finalthird", name: "Central Corridor Concentration", definition: "% of FOA sequences ending in central corridor", formula: "(FOAs ending centrally ÷ total FOAs) × 100", benchmark: "21.0% central | 41.5% left | 37.5% right | Central conversion: 34.3% vs 14-15% wide", target: "Increase central share above 25%", success: "34.3%", why: "Central FOAs convert at 2.3× the rate of wide FOAs but are only 21% of volume.", training: "Crossing drills with mandatory central arrival; cut-backs from wide to central pull-back zone.", evidence: "Figure 15", priority: "High" },
+  { id: "FIN-01", cat: "finishing", name: "Shot Conversion Rate", definition: "Goals scored as % of total shots from FOAs", formula: "(Goals ÷ total shots) × 100", benchmark: "Winners 17.4% | Losers 3.9% — 13.5pp gap", target: "≥15% per match", success: "17.4%", why: "Volume of shots between winners and losers is NOT statistically significant (P=0.106). The conversion rate IS the difference.", training: "Pressured finishing; reduced-reps high-quality finishing over high-volume drills.", evidence: "Figure 10, Table 6", priority: "Critical" },
+  { id: "FIN-02", cat: "finishing", name: "Shot-on-Target Conversion", definition: "Goals scored as % of shots on target", formula: "(Goals ÷ shots on target) × 100", benchmark: "Winners 39.2% | Losers 12.3% — 26.9pp gap", target: "≥39% on-target conversion", success: "39.2%", why: "THE SINGLE LARGEST WINNER-LOSER GAP IN THE STUDY. 26.9 percentage points. The decisive question isn't whether you hit the target — it's whether your on-target shots are well-placed.", training: "Shot placement work over shot power; GK-realistic finishing under fatigue.", evidence: "Table 5, Figure 10", priority: "Critical" },
+  { id: "FIN-03", cat: "finishing", name: "Shot-on-Target Volume Check", definition: "% of shots that hit the target (for reference, not a coaching focus)", formula: "(Shots on target ÷ total shots) × 100", benchmark: "Winners 44.6% | Losers 41.0% — only 3.6pp gap", target: "For reference only — don't make this a priority", success: "44.6%", why: "Winners and losers hit the target at nearly the same rate. A team with normal accuracy but poor conversion should work on shot placement (where the ball goes), not target practice.", training: "Avoid generic 'hit the target' practice; drill placement specificity (post-and-in, low-corners).", evidence: "Figure 10, Table 5", priority: "Diagnostic" },
+  { id: "FIN-04", cat: "finishing", name: "Wasted FOA Rate", definition: "% of FOA sequences ending in turnover, shot-off-target or dispossession", formula: "(Failed-with-shot/turnover outcomes ÷ total FOAs) × 100", benchmark: "Winners ~57% wasted | Losers ~73% wasted", target: "Reduce below 60%", success: "<60%", why: "Inverse measure of attacking efficiency. Losers waste 3 of every 4 FOAs; winners waste closer to 1 in 2.", training: "Outcome-based SSGs — entries must end in goal, on-target shot, or earned set-piece to count.", evidence: "Table 5 (derived)", priority: "Medium" },
+  { id: "M-01", cat: "macro", name: "FOA Entry Volume per Match", definition: "Mean final offensive area sequences created per 90 minutes", formula: "Count FOAs ÷ matches played", benchmark: "Winners 26.72 | Losers 22.60", target: "≥25 per match", success: "26.72", why: "Volume is a leading indicator but not statistically significant on its own (P=0.112). Useful in combination with conversion metrics.", training: "Tactical work to generate final-third entries; explicit target per half.", evidence: "Table 6", priority: "Medium" },
+  { id: "M-02", cat: "macro", name: "Shots on Target per Match", definition: "Mean shots on target created per 90 minutes", formula: "Count shots on target ÷ matches played", benchmark: "Winners 5.0/match | Losers 2.6/match", target: "≥5 per match", success: "5.0", why: "Winners nearly doubled the volume of on-target shots. Volume × conversion = goals.", training: "Quality shot generation in attacking patterns.", evidence: "Figure 9, Table 5", priority: "High" },
+  { id: "M-03", cat: "macro", name: "Long-OC Dominance Index", definition: "How many more 5+ pass OCs your team produces than the opposition (per match)", formula: "(Team ≥5-pass OCs) − (Opp ≥5-pass OCs)", benchmark: "Winners +4/match advantage on average", target: "Positive value across the match", success: "+4", why: "A relative measure — accounts for both the match situation and the opponent's style. A consistently positive number reflects tactical superiority in possession over a season.", training: "Post-match opposition comparison; track moving 5-match average.", evidence: "Appendix B (derived)", priority: "Medium" }
+];
+
+// ============ SSGs ============
+const ssgs = [
+  {
+    id: "SSG-01",
+    name: "The Infiltrator",
+    subtitle: "Medium-Pass Build-up Game",
+    targets: ["B-02", "B-04"],
+    setup: { pitch: "40m × 50m", players: "6v6 + 2 neutrals", duration: "4 × 4 min, 90s rest" },
+    objective: "Develop quality of decision-making at the 3rd–4th pass — the moment where winners separate from losers by 7.4pp in the underlying data.",
+    rules: [
+      "Pitch divided into 3 zones (build-up, transition, attack)",
+      "Possessing team must complete ≥3 passes before crossing into the next zone",
+      "Bonus point if the 3rd pass breaks an opposition line",
+      "Loss of ball before 3 passes = immediate transition for opposition",
+      "Neutrals (2) play with the team in possession"
+    ],
+    coaching: [
+      "Body shape to receive on the half-turn",
+      "First-touch direction away from pressure",
+      "Disguise the penetrating pass with eyes and body",
+      "Off-ball runs that draw markers and open lanes"
+    ],
+    progressions: "Reduce to 2 touches max in transition zone. Add a target player who must be reached on the 3rd pass.",
+    zones: ["CPD", "CPO", "LPO", "RPO"],
+    players: [
+      { team: "att", num: 9, x: 50, y: 18 }, { team: "att", num: 10, x: 32, y: 32 }, { team: "att", num: 11, x: 68, y: 32 },
+      { team: "att", num: 8, x: 50, y: 55 }, { team: "att", num: 6, x: 28, y: 72 }, { team: "att", num: 7, x: 72, y: 72 },
+      { team: "def", num: 4, x: 45, y: 28 }, { team: "def", num: 5, x: 55, y: 28 },
+      { team: "def", num: 2, x: 30, y: 48 }, { team: "def", num: 3, x: 70, y: 48 },
+      { team: "def", num: 8, x: 50, y: 65 }, { team: "def", num: 6, x: 50, y: 82 },
+      { team: "neu", num: "N", x: 12, y: 50 }, { team: "neu", num: "N", x: 88, y: 50 }
+    ]
+  },
+  {
+    id: "SSG-02",
+    name: "Five-Second Strike",
+    subtitle: "Post-Recovery Transition",
+    targets: ["T-01", "T-02"],
+    setup: { pitch: "35m × 45m", players: "7v7 + 2 GKs", duration: "6 × 3 min" },
+    objective: "Maximise quality of the first 2 actions after winning the ball — winners and losers recover possession at the same rate; the difference is entirely in what follows.",
+    rules: [
+      "On recovery, possession team has 5 seconds to enter the final third OR shoot",
+      "Failure to do so = possession returns to opposition at point of failure",
+      "Goal scored within the 5-second window = 3 points",
+      "Goal scored after the 5-second window = 1 point",
+      "Coach periodically forces turnovers to reset the clock"
+    ],
+    coaching: [
+      "Anticipation: forward runs as opposition control deteriorates",
+      "First action quality — a clean first touch is the whole transition",
+      "Look for direct vertical pass before considering sideways options",
+      "Off-ball runners must commit before recovery is confirmed"
+    ],
+    progressions: "Reduce window to 4 seconds. Add a 'high press' constraint where the recovering team must press immediately after losing the ball.",
+    zones: ["CPO", "LPO", "RPO", "CO"],
+    players: [
+      { team: "att", num: 9, x: 50, y: 22 }, { team: "att", num: 7, x: 25, y: 35 }, { team: "att", num: 11, x: 75, y: 35 },
+      { team: "att", num: 10, x: 42, y: 50 }, { team: "att", num: 8, x: 58, y: 50 },
+      { team: "att", num: 6, x: 35, y: 72 }, { team: "att", num: 5, x: 65, y: 72 },
+      { team: "def", num: 4, x: 50, y: 30 }, { team: "def", num: 2, x: 30, y: 50 }, { team: "def", num: 3, x: 70, y: 50 },
+      { team: "def", num: 6, x: 50, y: 60 }, { team: "def", num: 8, x: 40, y: 75 }, { team: "def", num: 10, x: 60, y: 75 },
+      { team: "def", num: 11, x: 50, y: 88 },
+      { team: "gk", num: 1, x: 50, y: 7 }, { team: "gk", num: 1, x: 50, y: 93 }
+    ]
+  },
+  {
+    id: "SSG-03",
+    name: "Central Channel",
+    subtitle: "Wide Service → Central Finish",
+    targets: ["F-05", "F-01", "F-02"],
+    setup: { pitch: "30m × 50m + marked central zone", players: "6v6 + 2 wide servers", duration: "5 × 4 min" },
+    objective: "Counter the wide-volume / central-value mismatch. Currently teams put 79% of final-third entries wide but central FOAs convert 2.3× more efficiently.",
+    rules: [
+      "Wide servers (one each touchline in the final third) deliver crosses on coach's signal",
+      "Goals only count if the FINISH occurs inside the marked central zone",
+      "Maximum 2 touches allowed in the central zone",
+      "First-touch finishes worth double",
+      "Defenders must occupy the central zone — clearances forward reset play"
+    ],
+    coaching: [
+      "Quality of the cut-back (pulled across the body, low and firm)",
+      "Far-post and near-post timing — players arrive at distinct moments",
+      "First-time finish over the controlled finish",
+      "Defenders: angle of approach to deny the cut-back lane"
+    ],
+    progressions: "Reduce central zone size. Remove server (must be earned via wide combination).",
+    zones: ["CO"],
+    players: [
+      { team: "att", num: 9, x: 50, y: 25 }, { team: "att", num: 10, x: 35, y: 30 }, { team: "att", num: 11, x: 65, y: 30 },
+      { team: "neu", num: "S", x: 8, y: 30 }, { team: "neu", num: "S", x: 92, y: 30 },
+      { team: "att", num: 8, x: 50, y: 55 }, { team: "att", num: 7, x: 30, y: 70 }, { team: "att", num: 6, x: 70, y: 70 },
+      { team: "def", num: 4, x: 42, y: 22 }, { team: "def", num: 5, x: 58, y: 22 },
+      { team: "def", num: 2, x: 32, y: 42 }, { team: "def", num: 3, x: 68, y: 42 },
+      { team: "def", num: 8, x: 50, y: 60 }, { team: "def", num: 6, x: 50, y: 80 },
+      { team: "gk", num: 1, x: 50, y: 10 }
+    ]
+  },
+  {
+    id: "SSG-04",
+    name: "Three-Second Final",
+    subtitle: "Direct Finishing in the Box",
+    targets: ["F-01", "F-03", "F-04"],
+    setup: { pitch: "Half pitch, attacking direction only", players: "5v4 + GK", duration: "8 × 90s rounds" },
+    objective: "Build the instinct for direct, fast finishes. 0-pass FOAs are the most common (55.4%) AND most successful (22.1%). Pass count and FOA duration both significantly reduce success.",
+    rules: [
+      "Server plays the ball into the attacking third",
+      "Attackers have 3 seconds to attempt a shot from the moment of first touch",
+      "Shot after the 3-second window = no goal (reset)",
+      "Defenders activated only on first touch (no early pressure)",
+      "Goals scored with 1 touch = 2 points, 2 touches = 1 point, 3+ touches = 0"
+    ],
+    coaching: [
+      "Pre-shot scan — head up before receiving",
+      "Body shape: open hips toward goal on first touch",
+      "Strike low and hard, near-post by default",
+      "Anticipate rebounds — second runner attacks the spill"
+    ],
+    progressions: "Reduce window to 2 seconds. Add second defender on a delay.",
+    zones: ["LO", "CO", "RO"],
+    players: [
+      { team: "att", num: 9, x: 50, y: 20 }, { team: "att", num: 10, x: 35, y: 28 }, { team: "att", num: 11, x: 65, y: 28 },
+      { team: "att", num: 7, x: 20, y: 42 }, { team: "att", num: 8, x: 80, y: 42 },
+      { team: "def", num: 4, x: 42, y: 25 }, { team: "def", num: 5, x: 58, y: 25 },
+      { team: "def", num: 2, x: 30, y: 35 }, { team: "def", num: 3, x: 70, y: 35 },
+      { team: "gk", num: 1, x: 50, y: 8 },
+      { team: "neu", num: "S", x: 50, y: 80 }
+    ]
+  },
+  {
+    id: "SSG-05",
+    name: "Pre-Offensive Conquest",
+    subtitle: "Engine Room Possession",
+    targets: ["B-03", "B-04", "B-01"],
+    setup: { pitch: "45m × 50m, pre-offensive zone marked", players: "7v7", duration: "4 × 5 min" },
+    objective: "Build dominance of the pre-offensive zone — the area where moves start AND end with the highest success rates (34.8% and 33.6%). 1,318 moves end here in the sample; it is the engine room of attacking football.",
+    rules: [
+      "Marked pre-offensive zone in attacking half",
+      "+1 point: entering the PO zone with possession",
+      "+2 points: completing 3 passes inside the PO zone",
+      "+3 points: exiting the PO zone forward toward goal with possession",
+      "Defenders win +1 by recovering ball inside their own PO zone"
+    ],
+    coaching: [
+      "Support angles inside the PO zone — diamond/triangle shapes",
+      "Secondary movements off the ball to create free spaces (per LOI underage model)",
+      "1-2 combinations with the player in possession",
+      "Avoid sideways drift — always look for the line-breaking pass forward"
+    ],
+    progressions: "Limit PO zone touches to 2. Add a target player who must receive in the PO zone.",
+    zones: ["LPO", "CPO", "RPO"],
+    players: [
+      { team: "att", num: 9, x: 50, y: 18 }, { team: "att", num: 11, x: 72, y: 30 }, { team: "att", num: 10, x: 28, y: 30 },
+      { team: "att", num: 8, x: 42, y: 48 }, { team: "att", num: 6, x: 58, y: 48 },
+      { team: "att", num: 7, x: 30, y: 68 }, { team: "att", num: 2, x: 70, y: 68 },
+      { team: "def", num: 4, x: 45, y: 25 }, { team: "def", num: 5, x: 55, y: 25 },
+      { team: "def", num: 3, x: 25, y: 45 }, { team: "def", num: 6, x: 50, y: 55 }, { team: "def", num: 8, x: 75, y: 45 },
+      { team: "def", num: 10, x: 40, y: 75 }, { team: "def", num: 11, x: 60, y: 75 }
+    ]
+  },
+  {
+    id: "SSG-06",
+    name: "Triangle Bypass",
+    subtitle: "Escaping the 2-Player Trap",
+    targets: ["G-02", "G-03"],
+    setup: { pitch: "35m × 40m", players: "5v5", duration: "5 × 4 min" },
+    objective: "Defeat the 2-player trap. 2-player sequences are 38% of all OCs but convert at only 18.8% — football's most common inefficiency. 3+ player triangular combinations convert at 24-26%.",
+    rules: [
+      "Possession only counts as 'completed' after 3 different players have touched the ball",
+      "Wall-pass / give-and-go (counts as 1 player) does NOT progress the counter",
+      "Goals scored after a triangular combination (3 distinct players) = 3 points",
+      "Goals from any other sequence = 1 point",
+      "Coach calls 'reset' if play stagnates between two players"
+    ],
+    coaching: [
+      "Third-player movement — the runner from depth",
+      "Avoid binary passing (back-and-forth) — find the third option",
+      "Body shape opens toward the third player not the second",
+      "Verbal cues to call the triangle into existence"
+    ],
+    progressions: "Require 4 different players. Reduce touches to 2 for the central player.",
+    zones: ["CPD", "CPO"],
+    players: [
+      { team: "att", num: 9, x: 50, y: 28 }, { team: "att", num: 10, x: 32, y: 50 }, { team: "att", num: 11, x: 68, y: 50 },
+      { team: "att", num: 8, x: 50, y: 65 }, { team: "att", num: 6, x: 50, y: 85 },
+      { team: "def", num: 4, x: 45, y: 32 }, { team: "def", num: 5, x: 55, y: 32 },
+      { team: "def", num: 2, x: 30, y: 55 }, { team: "def", num: 3, x: 70, y: 55 },
+      { team: "def", num: 6, x: 50, y: 75 }
+    ]
+  },
+  {
+    id: "SSG-07",
+    name: "Set Piece Studio",
+    subtitle: "Restart Routine Conversion",
+    targets: ["T-03"],
+    setup: { pitch: "Attacking half + 18-yard box", players: "8 attackers, 6 defenders + GK", duration: "12 routines × 2 reps" },
+    objective: "Close the 13.7pp restart-FOA conversion gap. Set pieces are the most coachable, most repeatable, most undertrained source of competitive advantage in the data.",
+    rules: [
+      "Coach calls one of 4 routines per repetition (corner, deep free-kick, wide free-kick, throw-in)",
+      "Each routine has a designated primary, secondary and tertiary target",
+      "If the primary is denied, the ball must be recycled within 4 seconds for secondary",
+      "Log conversion: shot generated / shot on target / goal scored per routine",
+      "Rotate defenders to face all routines"
+    ],
+    coaching: [
+      "Specific role clarity — each player has ONE job per routine",
+      "Movement timing — blockers move on the kicker's run-up",
+      "Second-phase awareness — recycled ball is where games are decided",
+      "Defender variation — train against zonal, man-marking and hybrid setups"
+    ],
+    progressions: "Add live defenders with full pressure. Disguise the routine call until last second.",
+    zones: ["LO", "CO", "RO"],
+    players: [
+      { team: "att", num: 9, x: 48, y: 18 }, { team: "att", num: 10, x: 52, y: 22 }, { team: "att", num: 11, x: 38, y: 25 },
+      { team: "att", num: 7, x: 62, y: 25 }, { team: "att", num: 4, x: 45, y: 32 }, { team: "att", num: 5, x: 55, y: 32 },
+      { team: "att", num: 8, x: 30, y: 40 }, { team: "att", num: 6, x: 92, y: 48 },
+      { team: "def", num: 2, x: 42, y: 20 }, { team: "def", num: 3, x: 58, y: 20 },
+      { team: "def", num: 4, x: 50, y: 14 }, { team: "def", num: 5, x: 40, y: 16 },
+      { team: "def", num: 6, x: 60, y: 16 }, { team: "def", num: 8, x: 50, y: 28 },
+      { team: "gk", num: 1, x: 50, y: 7 }
+    ]
+  },
+  {
+    id: "SSG-08",
+    name: "Solo Carrier",
+    subtitle: "Individual Progression",
+    targets: ["G-01", "B-02"],
+    setup: { pitch: "Three vertical channels, 60m × 36m total", players: "3v3 in each channel", duration: "6 × 3 min" },
+    objective: "Develop the underrated ability to carry the ball through pressure. Solo OCs convert at 31.3% — higher than 2-player sequences. Individual carriers control rhythm and break lines.",
+    rules: [
+      "Three vertical channels — players cannot leave their channel",
+      "Carriers must beat at least 1 opponent before passing or shooting",
+      "Successful 1v1 carry through a channel line = +1 point",
+      "Goal scored after a 1v1 carry = +2 points",
+      "Lost duel = immediate possession to opposition"
+    ],
+    coaching: [
+      "Body feint before the actual move — sell the deception",
+      "Acceleration on the second touch (after the beat)",
+      "Use of arms for shielding and balance",
+      "Recognise when to release — the carry is means, not end"
+    ],
+    progressions: "Remove channel restrictions for the carrier only. Add a 'carrier of the day' who must dribble every recovery.",
+    zones: ["LPD", "LPO", "CPD", "CPO", "RPD", "RPO"],
+    players: [
+      { team: "att", num: 9, x: 16, y: 30 }, { team: "att", num: 7, x: 50, y: 30 }, { team: "att", num: 11, x: 84, y: 30 },
+      { team: "att", num: 8, x: 16, y: 65 }, { team: "att", num: 10, x: 50, y: 65 }, { team: "att", num: 6, x: 84, y: 65 },
+      { team: "def", num: 3, x: 16, y: 45 }, { team: "def", num: 4, x: 50, y: 45 }, { team: "def", num: 2, x: 84, y: 45 },
+      { team: "def", num: 5, x: 16, y: 80 }, { team: "def", num: 6, x: 50, y: 80 }, { team: "def", num: 8, x: 84, y: 80 }
+    ]
+  }
+];
+
+// ============ ZONES (Coaching by Pitch Area) ============
+const zonePlans = [
+  {
+    id: "Z-01",
+    label: "Your Defensive Third",
+    label_sub: "LD, CD, RD — the zone you defend",
+    tier: "danger",
+    stats: [
+      { label: "Moves starting here succeed", value: "17.5%" },
+      { label: "Moves ending here succeed", value: "3.9%" },
+      { label: "Moves ending here that fail", value: "96.1%" }
+    ],
+    plain_english: "When your team loses the ball in your own third, very little good follows. Moves that end here fail 96 times out of 100. Time spent here is time you're slipping behind in the game.",
+    ssg_types: [
+      { name: "Quick Escape Games", desc: "Reward getting the ball forward immediately after winning it. The clock starts on every recovery — if you don't break out within X seconds, you concede a point." },
+      { name: "High-Press Recovery Drills", desc: "Train pressing so you win the ball further up the pitch and don't end up defending deep in the first place." },
+      { name: "Goalkeeper Build-Out Patterns", desc: "Repeatable, rehearsed patterns for getting out of pressure when your keeper has the ball." },
+      { name: "No-Backward-Pass Constraint Games", desc: "Force the team to play forward. Backward passes from this zone give the ball to the opposition." }
+    ],
+    why: "Less time spent here means more attacks created higher up the pitch.",
+    linked_ssgs: ["SSG-02"],
+    zones_to_highlight: ["LD", "CD", "RD"]
+  },
+  {
+    id: "Z-02",
+    label: "Your Middle Third",
+    label_sub: "LPD, CPD, RPD — your side of the halfway line",
+    tier: "moderate",
+    stats: [
+      { label: "Moves starting here", value: "1,046", note: "highest volume" },
+      { label: "Moves starting here succeed", value: "19.3%" },
+      { label: "Moves ending here succeed", value: "12.5%" }
+    ],
+    plain_english: "This is the busiest area on the pitch — more moves start here than anywhere else. The trap most teams fall into is passing sideways too much instead of pushing forward. The data shows that progress matters more than possession in this zone.",
+    ssg_types: [
+      { name: "Forward-Only Reward Games", desc: "Forward passes score points. Sideways or backwards passes give no points. Encourages constant forward thinking." },
+      { name: "Pivot Player Sessions", desc: "Develop the midfielder who can receive on the half-turn and play the ball into the next zone — the link between defence and attack." },
+      { name: "First-Press Bypass Games", desc: "Practice beating the opposition's first line of pressure with a single forward pass or carry." },
+      { name: "Switch-Play SSGs", desc: "Use the full width of the pitch to escape pressure on one side and attack from the other." }
+    ],
+    why: "Most touches happen here. Small improvements compound across the whole match.",
+    linked_ssgs: ["SSG-06", "SSG-08"],
+    zones_to_highlight: ["LPD", "CPD", "RPD"]
+  },
+  {
+    id: "Z-03",
+    label: "The Engine Room",
+    label_sub: "LPO, CPO, RPO — the opposition's side of the halfway line",
+    tier: "high-value",
+    stats: [
+      { label: "Moves starting here succeed", value: "34.8%", note: "highest" },
+      { label: "Moves ending here succeed", value: "33.6%", note: "highest" },
+      { label: "Moves ending here", value: "1,318", note: "most of any zone" }
+    ],
+    plain_english: "The data here is unambiguous: this is the most valuable area on the pitch. Winning the ball here AND ending your moves here both produce the highest success rates by a wide margin. Teams that dominate this zone tend to win matches.",
+    ssg_types: [
+      { name: "Engine Room Possession Games", desc: "Mark out the pre-offensive zone on the pitch. Bonus points for entering it, double points for completing passes inside it." },
+      { name: "High-Press Trigger Games", desc: "Win the ball in this zone and you have 5 seconds to score. Reward fast attacks after high recoveries." },
+      { name: "Tight-Space Combination Games", desc: "Triangles and one-twos in compressed areas — develop quick passing under pressure in the most important zone." },
+      { name: "Final-Third Launch Games", desc: "Use this zone as the springboard for entries into the attacking third. Reward forward progression through it." }
+    ],
+    why: "This zone is where matches are won. Your biggest coaching investment should sit here.",
+    linked_ssgs: ["SSG-01", "SSG-05"],
+    zones_to_highlight: ["LPO", "CPO", "RPO"]
+  },
+  {
+    id: "Z-04",
+    label: "The Attacking Third",
+    label_sub: "LO, CO, RO — the final third where goals happen",
+    tier: "execution",
+    stats: [
+      { label: "Central corridor success", value: "34.3%" },
+      { label: "Wide corridor success", value: "~14-15%" },
+      { label: "0-pass move success", value: "22.1%", note: "highest" },
+      { label: "0–3 second move success", value: "21.2%", note: "highest" }
+    ],
+    plain_english: "Goals happen here, but most teams waste the chances they create. The pattern in the data is clear: be quick, be direct, finish through the middle. Patient build-up in the final third actually reduces your chance of scoring — every extra pass and extra second works against you.",
+    ssg_types: [
+      { name: "First-Touch Finishing Games", desc: "One touch and shoot — extra touches give the keeper time to set and the defenders time to reorganise." },
+      { name: "3-Second Strike Drills", desc: "Must shoot within 3 seconds of entering the box. After 3 seconds, defenders win the ball." },
+      { name: "Central-Finish Goal Rules", desc: "Only goals finished from the central corridor count. Forces wide players to cut back rather than shoot from tight angles." },
+      { name: "1v1 Finishing Wars", desc: "Solo execution against the keeper. Solo final-third moves succeed more often than multi-player combinations." }
+    ],
+    why: "Matches are decided here by the quality and speed of finishing — not by patience.",
+    linked_ssgs: ["SSG-03", "SSG-04", "SSG-08"],
+    zones_to_highlight: ["LO", "CO", "RO"]
+  }
+];
+
+// ============ CHART DATA ============
+const passVsSuccess = [
+  { passes: "0", oc: null, foa: 22.1 }, { passes: "1", oc: null, foa: 16.1 },
+  { passes: "2", oc: 22.1, foa: 12.2 }, { passes: "3-4", oc: 23.5, foa: 7.3 },
+  { passes: "5+", oc: 29.2, foa: null }
+];
+const playerCurve = [
+  { players: "1", success: 31.3, volume: 249 }, { players: "2", success: 18.8, volume: 1972 },
+  { players: "3", success: 24.5, volume: 1195 }, { players: "4", success: 25.2, volume: 707 },
+  { players: "5", success: 25.1, volume: 459 }, { players: "6", success: 25.9, volume: 290 },
+  { players: "7", success: 33.5, volume: 182 }, { players: "8", success: 39.3, volume: 107 },
+  { players: "9", success: 44.0, volume: 25 }
+];
+const winnerLoserGap = [
+  { metric: "Shot→Goal (OT)", gap: 26.9 }, { metric: "Restart FOA", gap: 13.7 },
+  { metric: "Shot→Goal (all)", gap: 13.5 }, { metric: "Long FOA ≥6s", gap: 11.2 },
+  { metric: "1-Pass FOA", gap: 11.1 }, { metric: "Med-Pass OC", gap: 7.4 },
+  { metric: "Post-Recovery", gap: 3.7 }, { metric: "Shot Accuracy", gap: 3.6 }
+];
+const corridorData = [
+  { corridor: "Left", volume: 484, success: 14.0 },
+  { corridor: "Central", volume: 245, success: 34.3 },
+  { corridor: "Right", volume: 438, success: 15.1 }
+];
+
+// ============ ZONE DATA FOR INTERACTIVE PITCH ============
+// Data structured per dissertation Figures 7 & 8 (banded data)
+const zoneData = {
+  oc_start: {
+    label: "OC First Action — by zone of origin",
+    bands: {
+      offensive:    { success: 17.9, count: 168, color: "#FF9D3D" },
+      preOffensive: { success: 34.8, count: 775, color: BRAND.green },
+      preDefensive: { success: 19.3, count: 1046, color: "#FF9D3D" },
+      defensive:    { success: 17.5, count: 417, color: "#FF9D3D" }
+    }
+  },
+  oc_end: {
+    label: "OC Final Action — by zone of conclusion",
+    bands: {
+      offensive:    { success: null, count: null, color: "#555", note: "Moves ending here become Final Offensive Area sequences (see FOA Corridor view)" },
+      preOffensive: { success: 33.6, count: 1318, color: BRAND.green },
+      preDefensive: { success: 12.5, count: 766, color: "#FF6B35" },
+      defensive:    { success: 3.9, count: 154, color: "#FF3D5A" }
+    }
+  },
+  foa_corridor: {
+    label: "FOA Conclusion — by corridor in final third",
+    corridors: {
+      left:    { success: 14.0, count: 484, color: "#FF9D3D" },
+      central: { success: 34.3, count: 245, color: BRAND.green },
+      right:   { success: 15.1, count: 438, color: "#FF9D3D" }
+    }
+  }
+};
+
+// ============ INSIGHTS ============
+const insights = [
+  { title: "Recovery volume doesn't matter — conversion does", body: "Paired t-test showed winners and losers RECOVER BALL AT THE SAME RATE (P=0.119). The 'win more duels' philosophy is empirically wrong. Coach the 5 seconds after recovery, not the recovery itself.", metric: "t=1.615, P=0.119", severity: "myth-buster" },
+  { title: "Shot accuracy is identical between winners and losers", body: "Winners hit the target 44.6% of the time. Losers hit it 41.0%. The difference is what happens once you hit it — winners convert 39.2% of on-target shots vs 12.3% for losers. Train PLACEMENT, not accuracy.", metric: "Accuracy gap: 3.6pp | Conversion gap: 26.9pp", severity: "decisive" },
+  { title: "The 2-player trap", body: "2-player sequences are the MOST FREQUENT (38% of OCs) and the WORST PERFORMING (18.8% success). Solo carries (31.3%) and full-team sequences (33%+) both succeed more. This is football's hidden inefficiency.", metric: "U-curve confirmed across all 10 player-count buckets", severity: "discovery" },
+  { title: "Losers cannot finish from build-up", body: "From ≥3-pass FOA sequences: winners scored on 13.8% of attempts, losers scored ZERO TIMES out of 26 attempts. Only winners benefit from extended FOA combinations.", metric: "0/26 — losers' goal rate from 3+ pass FOAs", severity: "discovery" },
+  { title: "Restart efficiency is the most fixable gap", body: "Set-piece initiated FOAs convert at 20.8% for winners vs 7.1% for losers — a 13.7pp gap. Set pieces are coachable, repeatable, and undertrained relative to their separation potential.", metric: "Gap: 13.7pp | Volume: 90 FOAs", severity: "opportunity" },
+  { title: "Volume up the wings, value down the middle", body: "Teams put 79% of final-third entries into the wide corridors, but central corridor entries convert at 2.3× the rate. The wide bias is a coaching artefact, not a tactical optimum.", metric: "Central 34.3% vs Wide 14.5% avg", severity: "discovery" }
+];
+
+const priorityColors = { "Critical": "#FF3D5A", "High": "#FF9D3D", "Medium": "#FFD700", "Diagnostic": "#A8C5FF" };
+const severityStyles = {
+  "decisive":    { bg: "#3D0F1A", border: "#FF3D5A", text: "#FF3D5A", label: "DECISIVE" },
+  "discovery":   { bg: "#0F2A3D", border: "#00D4FF", text: "#00D4FF", label: "DISCOVERY" },
+  "myth-buster": { bg: "#2D1F00", border: "#FFD700", text: "#FFD700", label: "MYTH-BUSTER" },
+  "opportunity": { bg: "#0F2D1A", border: BRAND.green, text: BRAND.green, label: "OPPORTUNITY" }
+};
+
+// ============ BRAND COMPONENTS ============
+function ScoutsBrand({ small = false }) {
+  return (
+    <div className={`inline-flex items-center gap-2 ${small ? "text-[9px]" : "text-[11px]"}`}>
+      <span className="italic text-white/40" style={{ fontFamily: "'Georgia', serif" }}>Powered by</span>
+      <span
+        className={`font-black tracking-tight ${small ? "text-[10px]" : "text-xs"}`}
+        style={{
+          color: BRAND.green,
+          textShadow: `0 0 14px ${BRAND.greenGlow}`,
+          letterSpacing: "0.04em"
+        }}
+      >
+        SCOUTSPLAYBOOK
+      </span>
+    </div>
+  );
+}
+
+function Bracket({ side = "left", color = BRAND.greenDark }) {
+  // Mimics the angled bracket from the ScoutsPlaybook logo
+  return (
+    <svg width="18" height="36" viewBox="0 0 18 36" fill="none" style={{ display: "inline-block" }}>
+      {side === "left" ? (
+        <path d="M16 2 L4 6 L4 30 L16 34" stroke={color} strokeWidth="2.5" fill="none" />
+      ) : (
+        <path d="M2 2 L14 6 L14 30 L2 34" stroke={color} strokeWidth="2.5" fill="none" />
+      )}
+    </svg>
+  );
+}
+
+// ============ PITCH SVG ============
+function PitchSVG({ players = [], highlightZones = [], highlightColor = BRAND.green, width = 240, height = 300, compact = false }) {
+  const W = width, H = height;
+  const PX = 12, PY = 12; // padding
+  const fieldW = W - 2 * PX, fieldH = H - 2 * PY;
+  const colW = fieldW / 3;
+  const rowH = fieldH / 4;
+
+  // Zone definitions: id, col (0-2), row (0-3 where 0 is top/offensive)
+  const zones = [
+    { id: "LO", col: 0, row: 0 }, { id: "CO", col: 1, row: 0 }, { id: "RO", col: 2, row: 0 },
+    { id: "LPO", col: 0, row: 1 }, { id: "CPO", col: 1, row: 1 }, { id: "RPO", col: 2, row: 1 },
+    { id: "LPD", col: 0, row: 2 }, { id: "CPD", col: 1, row: 2 }, { id: "RPD", col: 2, row: 2 },
+    { id: "LD", col: 0, row: 3 }, { id: "CD", col: 1, row: 3 }, { id: "RD", col: 2, row: 3 }
+  ];
+
+  const teamColors = {
+    att: { fill: "#FFD500", stroke: "#1a1a1a", text: "#1a1a1a" },
+    def: { fill: "#E63946", stroke: "#1a1a1a", text: "#fff" },
+    neu: { fill: "#3A86FF", stroke: "#fff", text: "#fff" },
+    gk:  { fill: "#1a1a1a", stroke: "#fff", text: "#fff" }
+  };
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" style={{ borderRadius: 6 }}>
+      <defs>
+        <linearGradient id="grass" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#2D6A45" />
+          <stop offset="50%" stopColor="#1A4D2E" />
+          <stop offset="100%" stopColor="#2D6A45" />
+        </linearGradient>
+        <pattern id="grassPattern" x="0" y="0" width="20" height="40" patternUnits="userSpaceOnUse">
+          <rect width="20" height="40" fill="#1A4D2E" />
+          <rect width="20" height="20" fill="#226B3A" opacity="0.4" />
+        </pattern>
+      </defs>
+
+      {/* Pitch background */}
+      <rect x={PX} y={PY} width={fieldW} height={fieldH} fill="url(#grassPattern)" stroke="#fff" strokeWidth="1.5" rx="2" />
+
+      {/* Highlighted zones */}
+      {zones.filter(z => highlightZones.includes(z.id)).map(z => (
+        <rect
+          key={z.id}
+          x={PX + z.col * colW}
+          y={PY + z.row * rowH}
+          width={colW}
+          height={rowH}
+          fill={highlightColor}
+          opacity="0.28"
+        />
+      ))}
+
+      {/* Zone grid lines (subtle) */}
+      {[1, 2, 3].map(i => (
+        <line key={`h${i}`} x1={PX} y1={PY + i * rowH} x2={PX + fieldW} y2={PY + i * rowH} stroke="#fff" strokeOpacity="0.15" strokeDasharray="2 3" />
+      ))}
+      {[1, 2].map(i => (
+        <line key={`v${i}`} x1={PX + i * colW} y1={PY} x2={PX + i * colW} y2={PY + fieldH} stroke="#fff" strokeOpacity="0.15" strokeDasharray="2 3" />
+      ))}
+
+      {/* Halfway line */}
+      <line x1={PX} y1={PY + fieldH / 2} x2={PX + fieldW} y2={PY + fieldH / 2} stroke="#fff" strokeWidth="1.2" strokeOpacity="0.9" />
+
+      {/* Center circle */}
+      <circle cx={PX + fieldW / 2} cy={PY + fieldH / 2} r={Math.min(colW, rowH) * 0.35} fill="none" stroke="#fff" strokeWidth="1.2" opacity="0.9" />
+      <circle cx={PX + fieldW / 2} cy={PY + fieldH / 2} r="1.5" fill="#fff" opacity="0.9" />
+
+      {/* Penalty boxes */}
+      <rect x={PX + fieldW * 0.22} y={PY} width={fieldW * 0.56} height={fieldH * 0.13} fill="none" stroke="#fff" strokeWidth="1.2" opacity="0.9" />
+      <rect x={PX + fieldW * 0.36} y={PY} width={fieldW * 0.28} height={fieldH * 0.06} fill="none" stroke="#fff" strokeWidth="1.2" opacity="0.9" />
+      <rect x={PX + fieldW * 0.22} y={PY + fieldH * 0.87} width={fieldW * 0.56} height={fieldH * 0.13} fill="none" stroke="#fff" strokeWidth="1.2" opacity="0.9" />
+      <rect x={PX + fieldW * 0.36} y={PY + fieldH * 0.94} width={fieldW * 0.28} height={fieldH * 0.06} fill="none" stroke="#fff" strokeWidth="1.2" opacity="0.9" />
+
+      {/* Goals */}
+      <rect x={PX + fieldW * 0.42} y={PY - 3} width={fieldW * 0.16} height="3" fill="#fff" />
+      <rect x={PX + fieldW * 0.42} y={PY + fieldH} width={fieldW * 0.16} height="3" fill="#fff" />
+
+      {/* Attack direction arrow */}
+      {!compact && (
+        <g transform={`translate(${PX - 4}, ${PY + fieldH / 2})`}>
+          <text x="-4" y="3" fill={BRAND.green} fontSize="8" fontWeight="bold" textAnchor="end" opacity="0.7">
+            ▲
+          </text>
+        </g>
+      )}
+
+      {/* Zone labels (subtle, in unused zones) */}
+      {!compact && zones.map(z => (
+        <text
+          key={`label-${z.id}`}
+          x={PX + z.col * colW + colW / 2}
+          y={PY + z.row * rowH + 11}
+          fill="#fff"
+          opacity="0.32"
+          fontSize="7"
+          textAnchor="middle"
+          fontFamily="monospace"
+        >
+          {z.id}
+        </text>
+      ))}
+
+      {/* Players */}
+      {players.map((p, idx) => {
+        const c = teamColors[p.team] || teamColors.att;
+        const cx = PX + (p.x / 100) * fieldW;
+        const cy = PY + (p.y / 100) * fieldH;
+        const r = p.team === "gk" ? 7 : 8;
+        return (
+          <g key={idx}>
+            {p.team === "att" && (
+              <circle cx={cx} cy={cy} r={r + 4} fill={BRAND.green} opacity="0.25" />
+            )}
+            <circle cx={cx} cy={cy} r={r} fill={c.fill} stroke={c.stroke} strokeWidth="1.2" />
+            <text x={cx} y={cy + 3} fill={c.text} fontSize="9" fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">
+              {p.num}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// ============ INTERACTIVE PITCH ============
+function InteractivePitch() {
+  const [mode, setMode] = useState("oc_start");
+  const [selected, setSelected] = useState(null);
+
+  const W = 280, H = 360, PX = 16, PY = 16;
+  const fieldW = W - 2 * PX, fieldH = H - 2 * PY;
+  const colW = fieldW / 3;
+  const rowH = fieldH / 4;
+
+  const data = zoneData[mode];
+
+  // Map zones to data
+  const getZoneData = (col, row) => {
+    if (mode === "foa_corridor") {
+      if (row !== 0) return null;
+      const corridors = ["left", "central", "right"];
+      return { ...data.corridors[corridors[col]], label: `${corridors[col].toUpperCase()} corridor` };
+    }
+    // OC modes: data is at band level
+    const bandKeys = ["offensive", "preOffensive", "preDefensive", "defensive"];
+    const bandLabels = ["Offensive area", "Pre-offensive area", "Pre-defensive area", "Defensive area"];
+    const band = data.bands[bandKeys[row]];
+    return { ...band, label: bandLabels[row] };
+  };
+
+  const handleZoneClick = (col, row) => {
+    const zd = getZoneData(col, row);
+    if (!zd || zd.success === null) {
+      setSelected({ ...zd, col, row });
+    } else {
+      setSelected({ ...zd, col, row });
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+      <div className="mb-3">
+        <h3 className="text-sm font-bold text-white">Interactive Pitch · Zone Performance</h3>
+        <p className="text-[10px] text-white/40 mt-0.5">Tap a zone to inspect its data. Toggle modes below.</p>
+      </div>
+
+      <div className="flex gap-1 mb-4 p-1 rounded-md bg-black/30">
+        {[
+          { id: "oc_start", label: "OC Origin" },
+          { id: "oc_end", label: "OC Conclusion" },
+          { id: "foa_corridor", label: "FOA Corridor" }
+        ].map(m => (
+          <button
+            key={m.id}
+            onClick={() => { setMode(m.id); setSelected(null); }}
+            className="flex-1 py-1.5 text-[10px] font-bold rounded transition-all"
+            style={{
+              background: mode === m.id ? BRAND.green + "22" : "transparent",
+              color: mode === m.id ? BRAND.green : "rgba(255,255,255,0.5)",
+              border: `1px solid ${mode === m.id ? BRAND.green + "55" : "transparent"}`
+            }}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      <p className="text-[10px] text-white/50 mb-3 italic">{data.label}</p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 items-start">
+        <div className="sm:col-span-3">
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" style={{ borderRadius: 6 }}>
+            <rect x={PX} y={PY} width={fieldW} height={fieldH} fill="#0F3520" stroke="#fff" strokeWidth="1.5" rx="2" />
+
+            {/* Clickable zones */}
+            {[0, 1, 2, 3].map(row =>
+              [0, 1, 2].map(col => {
+                const zd = getZoneData(col, row);
+                const fill = zd && zd.color ? zd.color : "#555";
+                const opacity = zd && zd.success !== null ? 0.5 : 0.1;
+                const isSelected = selected && selected.col === col && selected.row === row;
+                return (
+                  <g key={`${row}-${col}`} onClick={() => handleZoneClick(col, row)} style={{ cursor: "pointer" }}>
+                    <rect
+                      x={PX + col * colW}
+                      y={PY + row * rowH}
+                      width={colW}
+                      height={rowH}
+                      fill={fill}
+                      opacity={isSelected ? 0.8 : opacity}
+                      stroke={isSelected ? BRAND.green : "transparent"}
+                      strokeWidth="2"
+                    />
+                    {zd && zd.success !== null && (
+                      <>
+                        <text
+                          x={PX + col * colW + colW / 2}
+                          y={PY + row * rowH + rowH / 2 - 4}
+                          fill="#fff" fontSize="13" fontWeight="900" textAnchor="middle"
+                        >
+                          {zd.success}%
+                        </text>
+                        <text
+                          x={PX + col * colW + colW / 2}
+                          y={PY + row * rowH + rowH / 2 + 9}
+                          fill="#fff" opacity="0.7" fontSize="8" textAnchor="middle"
+                        >
+                          n={zd.count}
+                        </text>
+                      </>
+                    )}
+                  </g>
+                );
+              })
+            )}
+
+            {/* Pitch markings */}
+            <line x1={PX} y1={PY + fieldH / 2} x2={PX + fieldW} y2={PY + fieldH / 2} stroke="#fff" strokeWidth="1.2" />
+            <circle cx={PX + fieldW / 2} cy={PY + fieldH / 2} r={Math.min(colW, rowH) * 0.32} fill="none" stroke="#fff" strokeWidth="1.2" />
+            <rect x={PX + fieldW * 0.22} y={PY} width={fieldW * 0.56} height={fieldH * 0.12} fill="none" stroke="#fff" strokeWidth="1" />
+            <rect x={PX + fieldW * 0.22} y={PY + fieldH * 0.88} width={fieldW * 0.56} height={fieldH * 0.12} fill="none" stroke="#fff" strokeWidth="1" />
+
+            {/* Direction indicator */}
+            <text x={W / 2} y={10} fill={BRAND.green} fontSize="9" fontWeight="bold" textAnchor="middle">▲ ATTACK</text>
+          </svg>
+        </div>
+
+        <div className="sm:col-span-2 space-y-2">
+          {selected ? (
+            <div className="rounded-md border border-white/15 bg-black/40 p-3 space-y-2">
+              <div className="text-[9px] uppercase tracking-widest text-white/40 font-mono">Selected</div>
+              <div className="text-sm font-bold text-white" style={{ fontFamily: "'Georgia', serif" }}>
+                {selected.label}
+              </div>
+              {selected.success !== null ? (
+                <>
+                  <div className="flex items-baseline gap-1 mt-2">
+                    <span className="text-2xl font-black" style={{ color: BRAND.green }}>{selected.success}%</span>
+                    <span className="text-[10px] text-white/40">success rate</span>
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-lg font-bold text-white">{selected.count}</span>
+                    <span className="text-[10px] text-white/40">total sequences</span>
+                  </div>
+                  <div className="pt-2 border-t border-white/10 text-[10px] text-white/60 leading-relaxed">
+                    {selected.success >= 30 && "Best zone in the data — coach for both winning the ball here and ending moves here."}
+                    {selected.success >= 20 && selected.success < 30 && "Decent zone — supports overall attacking flow."}
+                    {selected.success < 20 && selected.success >= 10 && "Low-value zone — minimise time spent here."}
+                    {selected.success < 10 && "Danger zone — possession ending here is almost always lost."}
+                  </div>
+                </>
+              ) : (
+                <div className="text-[10px] text-white/50 italic">
+                  {selected.note || "No data — this zone is not measured in the current view."}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-md border border-dashed border-white/15 bg-black/20 p-4 text-center">
+              <div className="text-[10px] text-white/40 italic">Tap any zone on the pitch</div>
+            </div>
+          )}
+
+          <div className="rounded-md bg-white/[0.02] p-2 border border-white/10">
+            <div className="text-[9px] uppercase tracking-widest text-white/40 mb-1.5 font-mono">Zone codes</div>
+            <div className="grid grid-cols-3 gap-x-2 gap-y-1 text-[9px] font-mono text-white/60">
+              <div>LO · CO · RO</div><div className="col-span-2">Offensive area</div>
+              <div>LPO · CPO · RPO</div><div className="col-span-2">Pre-offensive</div>
+              <div>LPD · CPD · RPD</div><div className="col-span-2">Pre-defensive</div>
+              <div>LD · CD · RD</div><div className="col-span-2">Defensive area</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============ ZONE CARD ============
+function ZoneCard({ zone }) {
+  const tierColors = {
+    danger:       { primary: "#3A86FF", bg: "rgba(58,134,255,0.07)",  label: "DANGER ZONE" },
+    moderate:     { primary: "#FFD700", bg: "rgba(255,215,0,0.06)",   label: "HIGH-VOLUME ZONE" },
+    "high-value": { primary: "#FF8C00", bg: "rgba(255,140,0,0.07)",   label: "ENGINE ROOM" },
+    execution:    { primary: "#FF3D5A", bg: "rgba(255,61,90,0.07)",   label: "EXECUTION ZONE" }
+  };
+  const colors = tierColors[zone.tier];
+
+  return (
+    <div className="rounded-lg border overflow-hidden" style={{
+      borderColor: colors.primary + "44",
+      background: `linear-gradient(180deg, ${colors.bg} 0%, rgba(0,0,0,0.4) 100%)`
+    }}>
+      {/* Header */}
+      <div className="px-4 pt-4 pb-3 border-b border-white/10">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="text-[10px] font-mono font-bold" style={{ color: colors.primary }}>{zone.id}</span>
+              <span className="text-[9px] font-bold tracking-widest px-1.5 py-0.5 rounded font-mono" style={{
+                background: colors.primary + "22", color: colors.primary, border: `1px solid ${colors.primary}44`
+              }}>{colors.label}</span>
+            </div>
+            <h3 className="text-xl font-black text-white leading-none mb-1" style={{ fontFamily: "'Georgia', serif", letterSpacing: "-0.02em" }}>
+              {zone.label}
+            </h3>
+            <p className="text-[11px] italic text-white/50">{zone.label_sub}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Pitch + Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 p-4">
+        <div className="sm:col-span-2">
+          <PitchSVG players={[]} highlightZones={zone.zones_to_highlight} highlightColor={colors.primary} compact={false} />
+        </div>
+        <div className="sm:col-span-3">
+          <div className="text-[9px] uppercase tracking-widest font-bold mb-2" style={{ color: colors.primary }}>
+            What the data shows
+          </div>
+          <div className="space-y-1.5 mb-3">
+            {zone.stats.map((s, i) => (
+              <div key={i} className="flex items-baseline justify-between gap-2 text-xs border-b border-white/5 pb-1.5">
+                <span className="text-white/60 leading-snug flex-1">{s.label}</span>
+                <span className="font-mono font-bold text-white shrink-0">
+                  {s.value}
+                  {s.note && <span className="text-[9px] text-white/40 ml-1 italic">({s.note})</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-white/80 leading-relaxed italic" style={{ fontFamily: "'Georgia', serif" }}>
+            {zone.plain_english}
+          </p>
+        </div>
+      </div>
+
+      {/* SSG types — the main recommendation block */}
+      <div className="border-t border-white/10 px-4 py-4" style={{ background: "rgba(0,0,0,0.3)" }}>
+        <div className="text-[10px] uppercase tracking-widest font-bold mb-3 flex items-center gap-2" style={{ color: colors.primary }}>
+          <span>SSG types to build for this zone</span>
+          <span className="flex-1 h-px" style={{ background: colors.primary + "33" }} />
+        </div>
+        <div className="space-y-3">
+          {zone.ssg_types.map((s, i) => (
+            <div key={i} className="flex gap-3">
+              <span className="text-[10px] font-mono font-bold shrink-0 pt-0.5" style={{ color: colors.primary }}>
+                {String(i + 1).padStart(2, '0')}
+              </span>
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-white mb-0.5">{s.name}</div>
+                <p className="text-[11px] text-white/65 leading-snug">{s.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Why + linked SSGs */}
+      <div className="border-t border-white/10 px-4 py-3">
+        <p className="text-[11px] text-white/70 italic leading-relaxed mb-2">
+          <span style={{ color: colors.primary }}>→ </span>{zone.why}
+        </p>
+        {zone.linked_ssgs && zone.linked_ssgs.length > 0 && (
+          <div className="flex items-center gap-2 text-[9px] flex-wrap">
+            <span className="text-white/40 uppercase tracking-widest font-mono">Build using:</span>
+            {zone.linked_ssgs.map(id => (
+              <span key={id} className="font-mono px-1.5 py-0.5 rounded font-bold" style={{
+                background: colors.primary + "22", color: colors.primary, border: `1px solid ${colors.primary}44`
+              }}>{id}</span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============ SSG CARD ============
+function SSGCard({ ssg }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="rounded-lg border overflow-hidden" style={{
+      borderColor: BRAND.greenDark + "88",
+      background: "linear-gradient(180deg, rgba(31,212,62,0.04) 0%, rgba(0,0,0,0.4) 100%)"
+    }}>
+      {/* Header */}
+      <div className="px-4 pt-4 pb-3 flex items-start justify-between gap-3 border-b border-white/10">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[10px] font-mono font-bold" style={{ color: BRAND.green }}>{ssg.id}</span>
+            <div className="flex flex-wrap gap-1">
+              {ssg.targets.map(t => (
+                <span key={t} className="text-[9px] font-mono px-1.5 py-0.5 rounded border" style={{
+                  borderColor: BRAND.green + "44", color: BRAND.green, background: BRAND.green + "11"
+                }}>
+                  {t}
+                </span>
+              ))}
+            </div>
+          </div>
+          <h3 className="text-xl font-black text-white leading-none mb-1" style={{ fontFamily: "'Georgia', serif", letterSpacing: "-0.02em" }}>
+            {ssg.name}
+          </h3>
+          <p className="text-[11px] italic text-white/50">{ssg.subtitle}</p>
+        </div>
+        <Bracket side="right" color={BRAND.green} />
+      </div>
+
+      {/* Pitch + Key Concepts side by side */}
+      <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 p-4">
+        <div className="sm:col-span-2">
+          <PitchSVG players={ssg.players} highlightZones={ssg.zones} />
+        </div>
+        <div className="sm:col-span-3 space-y-3">
+          <div>
+            <div className="text-[9px] uppercase tracking-widest font-bold mb-1.5" style={{ color: BRAND.green }}>Key Concepts</div>
+            <ul className="space-y-1.5">
+              {ssg.coaching.map((c, i) => (
+                <li key={i} className="text-[11px] text-white/80 leading-snug flex gap-2">
+                  <span style={{ color: BRAND.green }}>—</span>
+                  <span>{c}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="pt-2 border-t border-white/10 grid grid-cols-3 gap-2 text-[9px]">
+            <div>
+              <div className="text-white/40 uppercase tracking-widest mb-0.5">Pitch</div>
+              <div className="text-white/80 font-mono">{ssg.setup.pitch}</div>
+            </div>
+            <div>
+              <div className="text-white/40 uppercase tracking-widest mb-0.5">Players</div>
+              <div className="text-white/80 font-mono">{ssg.setup.players}</div>
+            </div>
+            <div>
+              <div className="text-white/40 uppercase tracking-widest mb-0.5">Duration</div>
+              <div className="text-white/80 font-mono">{ssg.setup.duration}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Expand button */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-4 py-2 text-[10px] font-bold tracking-wider uppercase border-t border-white/10 hover:bg-white/[0.03] transition-colors"
+        style={{ color: BRAND.green }}
+      >
+        {expanded ? "Hide Rules & Objectives ▲" : "Show Rules & Objectives ▼"}
+      </button>
+
+      {expanded && (
+        <div className="border-t border-white/10 divide-y divide-white/10 text-xs">
+          <div className="px-4 py-3">
+            <div className="text-[9px] uppercase tracking-widest text-white/40 mb-1.5 font-mono">Objective</div>
+            <p className="text-white/75 leading-relaxed">{ssg.objective}</p>
+          </div>
+          <div className="px-4 py-3 bg-black/30">
+            <div className="text-[9px] uppercase tracking-widest text-white/40 mb-1.5 font-mono">Rules</div>
+            <ol className="space-y-1.5">
+              {ssg.rules.map((r, i) => (
+                <li key={i} className="text-white/75 leading-snug flex gap-2">
+                  <span className="text-white/30 font-mono shrink-0">{i + 1}.</span>
+                  <span>{r}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+          <div className="px-4 py-3">
+            <div className="text-[9px] uppercase tracking-widest text-white/40 mb-1.5 font-mono">Progressions</div>
+            <p className="text-white/75 leading-relaxed italic">{ssg.progressions}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============ KPI CARD ============
+function KPICard({ kpi }) {
+  const [expanded, setExpanded] = useState(false);
+  const cat = kpiCategories[kpi.cat];
+  return (
+    <div onClick={() => setExpanded(!expanded)} className="rounded-lg border border-white/10 bg-white/[0.03] overflow-hidden cursor-pointer transition-all hover:border-white/25">
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[10px] font-mono text-white/30 shrink-0">{kpi.id}</span>
+            <h3 className="text-sm font-bold text-white leading-tight">{kpi.name}</h3>
+          </div>
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 tracking-wider" style={{
+            background: priorityColors[kpi.priority] + "22", color: priorityColors[kpi.priority], border: `1px solid ${priorityColors[kpi.priority]}44`
+          }}>{kpi.priority.toUpperCase()}</span>
+        </div>
+        <p className="text-xs text-white/50 leading-snug mb-3">{kpi.definition}</p>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-1 h-3 rounded-full" style={{ background: cat.color }} />
+            <span className="text-[10px] uppercase tracking-wider text-white/40">{cat.label}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-base font-mono font-bold" style={{ color: cat.color }}>{kpi.success}</span>
+            <span className="text-[9px] text-white/40 ml-1">{expanded ? "▲" : "▼"}</span>
+          </div>
+        </div>
+      </div>
+      {expanded && (
+        <div className="border-t border-white/10 divide-y divide-white/10 text-xs">
+          <div className="px-4 py-3 bg-black/30"><div className="text-[9px] uppercase tracking-widest text-white/40 mb-1">Formula</div><div className="font-mono text-white/80 text-[11px]">{kpi.formula}</div></div>
+          <div className="px-4 py-3"><div className="text-[9px] uppercase tracking-widest text-white/40 mb-1">Why it matters</div><div className="text-white/70 leading-relaxed">{kpi.why}</div></div>
+          <div className="px-4 py-3 bg-white/[0.02]"><div className="text-[9px] uppercase tracking-widest text-white/40 mb-1">Benchmark</div><div className="text-white/70">{kpi.benchmark}</div></div>
+          <div className="px-4 py-3"><div className="text-[9px] uppercase tracking-widest text-white/40 mb-1">Target</div><div className="text-white/70">{kpi.target}</div></div>
+          <div className="px-4 py-3 bg-white/[0.02]"><div className="text-[9px] uppercase tracking-widest text-white/40 mb-1">Training</div><div className="text-white/70 leading-relaxed">{kpi.training}</div></div>
+          <div className="px-4 py-2 bg-black/40 text-[10px] text-white/30 font-mono">Source: {kpi.evidence}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChartCard({ title, subtitle, children, footnote, height = 220 }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+      <div className="mb-3"><h3 className="text-sm font-bold text-white">{title}</h3>{subtitle && <p className="text-[10px] text-white/40 mt-0.5">{subtitle}</p>}</div>
+      <div style={{ width: "100%", height }}>{children}</div>
+      {footnote && <p className="text-[10px] text-white/40 mt-3 italic leading-relaxed">{footnote}</p>}
+    </div>
+  );
+}
+
+function Section({ id, title, sub, children }) {
+  return (
+    <section className="mb-12">
+      <div className="flex items-baseline gap-3 mb-4">
+        <span className="text-[10px] font-mono" style={{ color: BRAND.green }}>{id}</span>
+        <h2 className="text-xl font-black text-white leading-none" style={{ fontFamily: "'Georgia', serif", letterSpacing: "-0.02em" }}>{title}</h2>
+      </div>
+      {sub && <p className="text-xs text-white/40 mb-5 leading-relaxed">{sub}</p>}
+      {children}
+    </section>
+  );
+}
+
+function StatPill({ label, value, sub, color }) {
+  return (
+    <div className="flex flex-col gap-0.5 py-2">
+      <span className="text-[10px] uppercase tracking-widest text-white/40">{label}</span>
+      <span className="text-2xl font-black" style={{ color, fontFamily: "'Georgia', serif" }}>{value}</span>
+      {sub && <span className="text-[10px] text-white/40">{sub}</span>}
+    </div>
+  );
+}
+
+// ============ APP ============
+export default function App() {
+  const [view, setView] = useState("zones");
+  const [activeCat, setActiveCat] = useState("buildup");
+  const cats = Object.entries(kpiCategories);
+  const activeCatData = kpiCategories[activeCat];
+  const filteredKpis = kpis.filter(k => k.cat === activeCat);
+
+  return (
+    <div className="min-h-screen text-white relative" style={{
+      background: "radial-gradient(ellipse at 50% 0%, #0a1828 0%, #050810 60%, #000000 100%)",
+      fontFamily: "'Georgia', 'Times New Roman', serif"
+    }}>
+      <div className="fixed inset-0 pointer-events-none opacity-[0.22] z-0" style={{
+        backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E")`,
+        backgroundSize: "200px"
+      }} />
+
+      <div className="relative z-10 max-w-3xl mx-auto px-4 py-8">
+
+        {/* HEADER with brackets */}
+        <header className="mb-10">
+          <div className="flex items-center gap-2 mb-4 text-[10px] font-mono text-white/30 uppercase tracking-widest">
+            <span>League of Ireland</span>
+            <span className="flex-1 h-px bg-white/10" />
+            <ScoutsBrand small />
+          </div>
+
+          <div className="flex items-start gap-2">
+            <div className="pt-3"><Bracket side="left" color={BRAND.green} /></div>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-4xl font-black leading-[0.95] tracking-tight" style={{ fontFamily: "'Georgia', serif", letterSpacing: "-0.035em" }}>
+                The Coach's <em style={{ color: BRAND.green, fontStyle: "italic" }}>Playbook</em>
+              </h1>
+              <p className="text-xs text-white/50 leading-relaxed italic mt-2 max-w-lg">
+                4 zone-by-zone coaching plans, 8 small-sided games and 24 evidence-based KPIs — derived from a sample of League of Ireland Premier Division matches.
+              </p>
+            </div>
+            <div className="pt-3"><Bracket side="right" color={BRAND.green} /></div>
+          </div>
+
+          <div className="grid grid-cols-4 gap-2 mt-6 p-4 rounded-lg border" style={{
+            background: "rgba(0,0,0,0.3)",
+            borderColor: BRAND.greenDark + "66"
+          }}>
+            <StatPill label="SSGs" value="8" color={BRAND.green} />
+            <StatPill label="KPIs" value="24" color="#00D4FF" />
+            <StatPill label="OCs" value="5,192" color="#FFD700" />
+            <StatPill label="FOAs" value="1,167" color="#FF6B35" />
+          </div>
+        </header>
+
+        {/* THE THESIS */}
+        <div className="mb-10 p-5 rounded-lg border relative overflow-hidden" style={{
+          background: `linear-gradient(135deg, ${BRAND.green}11 0%, rgba(0,0,0,0.4) 100%)`,
+          borderColor: BRAND.greenDark + "88"
+        }}>
+          <div className="text-[10px] uppercase tracking-widest text-white/50 mb-2 font-mono flex items-center gap-2">
+            <span style={{ color: BRAND.green }}>●</span> The headline finding
+          </div>
+          <p className="text-base leading-relaxed text-white/90" style={{ fontFamily: "'Georgia', serif" }}>
+            Winners and losers create <em className="text-white/60">statistically equal</em> volumes of recoveries, final-third entries, and shots. The gap is entirely in <strong style={{ color: BRAND.green }}>conversion</strong> — what happens in the 2-3 actions following an opportunity, not the creation of the opportunity itself.
+          </p>
+        </div>
+
+        {/* GLOSSARY — always visible above tabs */}
+        <div className="mb-6 p-4 rounded-lg border border-white/10" style={{ background: "rgba(0,0,0,0.3)" }}>
+          <div className="text-[10px] uppercase tracking-widest text-white/40 mb-3 font-mono flex items-center gap-2">
+            <span style={{ color: BRAND.green }}>◆</span> Quick Glossary
+            <span className="text-white/30 normal-case tracking-normal italic">— terms used throughout</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="rounded p-2.5 bg-white/[0.03] border border-white/5">
+              <div className="flex items-baseline gap-2 mb-1">
+                <span className="font-mono font-black text-base" style={{ color: BRAND.green }}>OC</span>
+                <span className="text-[10px] text-white/40 font-mono">Offensive Coverage</span>
+              </div>
+              <p className="text-[11px] text-white/65 leading-snug">A possession that starts in your own half and moves the ball forward into the attacking third.</p>
+            </div>
+            <div className="rounded p-2.5 bg-white/[0.03] border border-white/5">
+              <div className="flex items-baseline gap-2 mb-1">
+                <span className="font-mono font-black text-base" style={{ color: BRAND.green }}>FOA</span>
+                <span className="text-[10px] text-white/40 font-mono">Final Offensive Area</span>
+              </div>
+              <p className="text-[11px] text-white/65 leading-snug">The attacking third — the part of the pitch where shots are taken and goals are scored.</p>
+            </div>
+            <div className="rounded p-2.5 bg-white/[0.03] border border-white/5">
+              <div className="flex items-baseline gap-2 mb-1">
+                <span className="font-mono font-black text-base" style={{ color: BRAND.green }}>SSG</span>
+                <span className="text-[10px] text-white/40 font-mono">Small-Sided Game</span>
+              </div>
+              <p className="text-[11px] text-white/65 leading-snug">A training drill with reduced players and pitch size to develop specific tactical skills.</p>
+            </div>
+          </div>
+          <div className="mt-4 pt-4 border-t border-white/5">
+            <div className="text-[9px] uppercase tracking-widest text-white/40 mb-3 font-mono">Zone codes used on the pitch</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="rounded p-2.5 bg-white/[0.02] border border-white/5">
+                <div className="font-mono font-black text-[11px] mb-1 tracking-wider" style={{ color: "#3D8EFF" }}>LD · CD · RD</div>
+                <div className="text-[10px] text-white/55 leading-snug">Defensive area (left, centre, right of your defensive third)</div>
+              </div>
+              <div className="rounded p-2.5 bg-white/[0.02] border border-white/5">
+                <div className="font-mono font-black text-[11px] mb-1 tracking-wider" style={{ color: "#FFD700" }}>LPD · CPD · RPD</div>
+                <div className="text-[10px] text-white/55 leading-snug">Pre-defensive — your half, in front of the defensive third</div>
+              </div>
+              <div className="rounded p-2.5 bg-white/[0.02] border border-white/5">
+                <div className="font-mono font-black text-[11px] mb-1 tracking-wider" style={{ color: "#FF8C00" }}>LPO · CPO · RPO</div>
+                <div className="text-[10px] text-white/55 leading-snug">Pre-offensive — opponent's half, before the final third</div>
+              </div>
+              <div className="rounded p-2.5 bg-white/[0.02] border border-white/5">
+                <div className="font-mono font-black text-[11px] mb-1 tracking-wider" style={{ color: "#FF3D5A" }}>LO · CO · RO</div>
+                <div className="text-[10px] text-white/55 leading-snug">Offensive area — the final third where shots happen</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* TAB BAR */}
+        <div className="flex gap-1 mb-6 p-1 rounded-lg bg-white/[0.03] border border-white/10 overflow-x-auto">
+          {[
+            { id: "zones", label: "Zones" },
+            { id: "ssgs", label: "SSGs" },
+            { id: "pitch", label: "Pitch" },
+            { id: "kpis", label: "KPIs" },
+            { id: "visuals", label: "Visuals" },
+            { id: "insights", label: "Insights" },
+            { id: "index", label: "Index" }
+          ].map(v => (
+            <button
+              key={v.id}
+              onClick={() => setView(v.id)}
+              className="flex-1 py-2 text-[11px] font-bold rounded transition-all uppercase tracking-wider whitespace-nowrap"
+              style={{
+                background: view === v.id ? BRAND.green + "1A" : "transparent",
+                color: view === v.id ? BRAND.green : "rgba(255,255,255,0.4)",
+                border: `1px solid ${view === v.id ? BRAND.green + "55" : "transparent"}`
+              }}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ======== ZONES ======== */}
+        {view === "zones" && (
+          <Section id="01" title="Coaching by Pitch Zone" sub="What kind of small-sided game should you build for each part of the pitch? Each card translates what the data shows about a zone into a set of session types coaches can take straight to training.">
+            <div className="space-y-4">
+              {zonePlans.map(z => <ZoneCard key={z.id} zone={z} />)}
+            </div>
+
+            <div className="mt-6 p-4 rounded-lg border" style={{ borderColor: BRAND.green + "33", background: BRAND.green + "08" }}>
+              <div className="text-[10px] uppercase tracking-widest mb-2 font-mono" style={{ color: BRAND.green }}>How to use this page</div>
+              <ul className="space-y-2 text-xs text-white/70 leading-relaxed">
+                <li><span style={{ color: BRAND.green }}>1.</span> Pick the zone you want to develop this week.</li>
+                <li><span style={{ color: BRAND.green }}>2.</span> Read what the data says about it — coaches need to know the why before the what.</li>
+                <li><span style={{ color: BRAND.green }}>3.</span> Choose one of the four SSG types as your design starting point.</li>
+                <li><span style={{ color: BRAND.green }}>4.</span> If you want a fully-built session, jump to the <strong>SSGs</strong> tab using the linked codes.</li>
+              </ul>
+            </div>
+          </Section>
+        )}
+
+        {/* ======== SSGs ======== */}
+        {view === "ssgs" && (
+          <Section id="02" title="Small-Sided Games" sub="Eight game-based training designs, each derived from a measured gap between winning and losing teams in the underlying data. The KPI tags link each session back to the evidence.">
+            <div className="space-y-4">
+              {ssgs.map(s => <SSGCard key={s.id} ssg={s} />)}
+            </div>
+          </Section>
+        )}
+
+        {/* ======== PITCH ======== */}
+        {view === "pitch" && (
+          <Section id="03" title="Interactive Pitch" sub="The 12-zone framework from the dissertation, made tappable. Toggle between OC origin, OC conclusion, and FOA corridor data.">
+            <InteractivePitch />
+
+            <div className="mt-6 p-4 rounded-lg border border-white/10 bg-white/[0.02]">
+              <div className="text-[10px] uppercase tracking-widest text-white/40 mb-2 font-mono">Reading the pitch</div>
+              <ul className="space-y-2 text-xs text-white/65 leading-relaxed">
+                <li><span style={{ color: BRAND.green }}>●</span> <strong>Pre-offensive area</strong> is the engine room — highest success rate as both the start (34.8%) and end (33.6%) of moves.</li>
+                <li><span style={{ color: "#FF3D5A" }}>●</span> <strong>Defensive area</strong> is the danger zone — 96 out of every 100 moves ending there fail.</li>
+                <li><span style={{ color: BRAND.green }}>●</span> In the final third, the <strong>central corridor</strong> succeeds 34.3% of the time — over double the wide corridors (14-15%).</li>
+              </ul>
+            </div>
+          </Section>
+        )}
+
+        {/* ======== KPIs ======== */}
+        {view === "kpis" && (
+          <Section id="04" title="KPI Library" sub="Tap any card to expand definition, formula, training application and source.">
+            <div className="flex gap-1.5 mb-5 overflow-x-auto pb-1 -mx-4 px-4">
+              {cats.map(([key, cat]) => (
+                <button
+                  key={key}
+                  onClick={() => setActiveCat(key)}
+                  className="shrink-0 px-3 py-2 rounded text-[11px] font-bold transition-all border"
+                  style={{
+                    background: activeCat === key ? cat.color + "1A" : "rgba(255,255,255,0.02)",
+                    borderColor: activeCat === key ? cat.color : "rgba(255,255,255,0.1)",
+                    color: activeCat === key ? cat.color : "rgba(255,255,255,0.5)"
+                  }}
+                >
+                  {cat.label}<span className="ml-1.5 opacity-50">({kpis.filter(k => k.cat === key).length})</span>
+                </button>
+              ))}
+            </div>
+            <div className="mb-4 p-3 rounded bg-white/[0.02] border-l-2" style={{ borderColor: activeCatData.color }}>
+              <div className="text-[10px] uppercase tracking-widest mb-1" style={{ color: activeCatData.color }}>{activeCatData.sub}</div>
+              <p className="text-xs text-white/60 italic">{activeCatData.description}</p>
+            </div>
+            <div className="space-y-2">
+              {filteredKpis.map(k => <KPICard key={k.id} kpi={k} />)}
+            </div>
+          </Section>
+        )}
+
+        {/* ======== VISUALS ======== */}
+        {view === "visuals" && (
+          <Section id="05" title="Visual Analysis" sub="The patterns the raw tables conceal.">
+            <div className="space-y-4">
+              <ChartCard title="Winner / Loser Gap by Metric" subtitle="Ranked by absolute percentage-point separation"
+                footnote="Shot-on-target conversion is the single largest separator — nearly 3× larger than any build-up metric.">
+                <ResponsiveContainer>
+                  <BarChart data={winnerLoserGap} layout="vertical" margin={{ top: 0, right: 30, bottom: 0, left: 60 }}>
+                    <CartesianGrid stroke="rgba(255,255,255,0.05)" />
+                    <XAxis type="number" stroke="rgba(255,255,255,0.4)" fontSize={9} unit="pp" />
+                    <YAxis type="category" dataKey="metric" stroke="rgba(255,255,255,0.6)" fontSize={9} width={60} />
+                    <Tooltip contentStyle={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.2)", fontSize: 11 }} formatter={(v) => `${v}pp`} />
+                    <Bar dataKey="gap" radius={[0, 4, 4, 0]}>
+                      {winnerLoserGap.map((e, i) => (
+                        <Cell key={i} fill={e.gap >= 20 ? "#FF3D5A" : e.gap >= 10 ? "#FF9D3D" : e.gap >= 5 ? "#FFD700" : "#A8C5FF"} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartCard>
+
+              <ChartCard title="The 2-Player Trap" subtitle="Success rate by players involved in OC sequences"
+                footnote="U-curve: solo (31.3%) and large groups (33%+) succeed. The 2-player sequence — 38% of all OCs — drops to 18.8%.">
+                <ResponsiveContainer>
+                  <LineChart data={playerCurve}>
+                    <CartesianGrid stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="players" stroke="rgba(255,255,255,0.6)" fontSize={10} />
+                    <YAxis stroke="rgba(255,255,255,0.6)" fontSize={10} unit="%" />
+                    <Tooltip contentStyle={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.2)", fontSize: 11 }} formatter={(v, n, p) => [`${v}% · n=${p.payload.volume}`, ""]} />
+                    <ReferenceLine y={23.7} stroke="rgba(255,215,0,0.5)" strokeDasharray="3 3" label={{ value: "avg 23.7%", fontSize: 8, fill: "rgba(255,215,0,0.7)", position: "right" }} />
+                    <Line type="monotone" dataKey="success" stroke={BRAND.green} strokeWidth={2.5} dot={{ r: 4, fill: BRAND.green }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </ChartCard>
+
+              <ChartCard title="Passes vs Success — OC vs FOA" subtitle="Opposite gradients tell opposite stories"
+                footnote="Build-up: more passes = more success. Final third: more passes = less success. Distinct training principles for distinct phases.">
+                <ResponsiveContainer>
+                  <LineChart data={passVsSuccess}>
+                    <CartesianGrid stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="passes" stroke="rgba(255,255,255,0.6)" fontSize={10} />
+                    <YAxis stroke="rgba(255,255,255,0.6)" fontSize={10} unit="%" />
+                    <Tooltip contentStyle={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.2)", fontSize: 11 }} />
+                    <Legend wrapperStyle={{ fontSize: 10 }} />
+                    <Line type="monotone" name="OC" dataKey="oc" stroke="#00D4FF" strokeWidth={2.5} dot={{ r: 4 }} connectNulls />
+                    <Line type="monotone" name="FOA" dataKey="foa" stroke="#FF6B35" strokeWidth={2.5} dot={{ r: 4 }} connectNulls />
+                  </LineChart>
+                </ResponsiveContainer>
+              </ChartCard>
+
+              <ChartCard title="Corridor Imbalance" subtitle="FOAs end mostly wide but convert mostly centrally"
+                footnote="Wide corridors carry 79% of FOA volume but produce ~15% success. Central carries 21% of volume at 34.3% success.">
+                <ResponsiveContainer>
+                  <BarChart data={corridorData} margin={{ top: 10, right: 10, bottom: 5, left: 0 }}>
+                    <CartesianGrid stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="corridor" stroke="rgba(255,255,255,0.6)" fontSize={10} />
+                    <YAxis yAxisId="left" stroke="rgba(0,212,255,0.6)" fontSize={9} />
+                    <YAxis yAxisId="right" orientation="right" stroke="rgba(255,107,53,0.6)" fontSize={9} unit="%" />
+                    <Tooltip contentStyle={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.2)", fontSize: 11 }} />
+                    <Legend wrapperStyle={{ fontSize: 10 }} />
+                    <Bar yAxisId="left" name="FOA volume" dataKey="volume" fill="#00D4FF" radius={[4, 4, 0, 0]} />
+                    <Bar yAxisId="right" name="Success %" dataKey="success" fill="#FF6B35" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartCard>
+            </div>
+          </Section>
+        )}
+
+        {/* ======== INSIGHTS ======== */}
+        {view === "insights" && (
+          <Section id="06" title="Hidden Insights" sub="The patterns conventional coaching misses.">
+            <div className="space-y-3">
+              {insights.map((ins, idx) => {
+                const s = severityStyles[ins.severity];
+                return (
+                  <div key={idx} className="rounded-lg border p-4" style={{ background: s.bg, borderColor: s.border + "44" }}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[9px] font-bold tracking-widest font-mono px-2 py-0.5 rounded" style={{ background: s.border + "22", color: s.text, border: `1px solid ${s.border}66` }}>{s.label}</span>
+                      <span className="text-[9px] font-mono text-white/30">#{String(idx + 1).padStart(2, "0")}</span>
+                    </div>
+                    <h3 className="text-base font-bold text-white mb-2 leading-tight" style={{ fontFamily: "'Georgia', serif" }}>{ins.title}</h3>
+                    <p className="text-xs text-white/70 leading-relaxed mb-3">{ins.body}</p>
+                    <div className="text-[10px] font-mono px-2 py-1 rounded bg-black/40 text-white/50 inline-block">{ins.metric}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </Section>
+        )}
+
+        {/* ======== INDEX ======== */}
+        {view === "index" && (
+          <Section id="07" title="Complete Index" sub="All 4 zone plans, 8 SSGs and 24 KPIs at a glance.">
+            <div className="rounded-lg border border-white/10 overflow-hidden mb-6">
+              <div className="px-3 py-2 bg-white/[0.04] text-[10px] font-mono uppercase tracking-wider" style={{ color: BRAND.green }}>
+                Zone Plans
+              </div>
+              <div className="divide-y divide-white/5">
+                {zonePlans.map(z => (
+                  <div key={z.id} className="px-3 py-2.5 flex items-center gap-3 text-[10px] hover:bg-white/[0.02]">
+                    <span className="font-mono w-12 shrink-0" style={{ color: BRAND.green }}>{z.id}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-white/90 font-bold leading-tight">{z.label}</div>
+                      <div className="text-white/40 italic text-[9px]">{z.label_sub}</div>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      {z.linked_ssgs.map(t => (
+                        <span key={t} className="font-mono px-1 py-0.5 rounded text-[8px]" style={{ background: BRAND.green + "22", color: BRAND.green }}>{t}</span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-white/10 overflow-hidden mb-6">
+              <div className="px-3 py-2 bg-white/[0.04] text-[10px] font-mono uppercase tracking-wider" style={{ color: BRAND.green }}>
+                Small-Sided Games
+              </div>
+              <div className="divide-y divide-white/5">
+                {ssgs.map(s => (
+                  <div key={s.id} className="px-3 py-2.5 flex items-center gap-3 text-[10px] hover:bg-white/[0.02]">
+                    <span className="font-mono w-12 shrink-0" style={{ color: BRAND.green }}>{s.id}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-white/90 font-bold leading-tight">{s.name}</div>
+                      <div className="text-white/40 italic text-[9px]">{s.subtitle}</div>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      {s.targets.map(t => (
+                        <span key={t} className="font-mono px-1 py-0.5 rounded text-[8px]" style={{ background: BRAND.green + "22", color: BRAND.green }}>{t}</span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-white/10 overflow-hidden">
+              <div className="px-3 py-2 bg-white/[0.04] text-[10px] font-mono uppercase tracking-wider text-white/60">
+                KPIs (24)
+              </div>
+              <div className="divide-y divide-white/5">
+                {kpis.map(k => {
+                  const cat = kpiCategories[k.cat];
+                  return (
+                    <div key={k.id} className="px-3 py-2.5 grid grid-cols-12 gap-2 items-center text-[10px] hover:bg-white/[0.02]">
+                      <div className="col-span-1 font-mono text-white/40">{k.id}</div>
+                      <div className="col-span-5 text-white/80 leading-tight">{k.name}</div>
+                      <div className="col-span-3 flex items-center gap-1.5">
+                        <div className="w-1 h-1 rounded-full shrink-0" style={{ background: cat.color }} />
+                        <span className="text-white/50">{cat.label}</span>
+                      </div>
+                      <div className="col-span-2 font-mono font-bold" style={{ color: cat.color }}>{k.success}</div>
+                      <div className="col-span-1">
+                        <span className="text-[8px] px-1 py-0.5 rounded font-bold" style={{ background: priorityColors[k.priority] + "22", color: priorityColors[k.priority] }}>{k.priority.slice(0, 3).toUpperCase()}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </Section>
+        )}
+
+        {/* FOOTER */}
+        <footer className="mt-12 pt-6 border-t border-white/10 text-center space-y-3">
+          <div className="flex justify-center"><ScoutsBrand /></div>
+          <p className="text-[10px] font-mono text-white/25 leading-relaxed">
+            Data from a sample of League of Ireland Premier Division matches · 5,192 offensive coverages · 1,167 final offensive area sequences
+          </p>
+        </footer>
+
+      </div>
+    </div>
+  );
+}
